@@ -783,9 +783,22 @@ def weighted_procrustes(X: np.ndarray, Y: np.ndarray, pi: np.ndarray, enforce_de
 
 def coarse_anchor_search(X, Y, M_bio, a, b, alpha, reg, reg_m, angles_deg):
     """Searches over global coarse alignments in both O(d) chiral states."""
-    k = 800
-    idx_X = np.random.choice(X.shape[0], k, replace=False) if X.shape[0] > k else np.arange(X.shape[0])
-    idx_Y = np.random.choice(Y.shape[0], k, replace=False) if Y.shape[0] > k else np.arange(Y.shape[0])
+    n_X = min(X.shape[0], M_bio.shape[0], a.shape[0])
+    n_Y = min(Y.shape[0], M_bio.shape[1], b.shape[0])
+
+    if n_X == 0 or n_Y == 0:
+        raise ValueError("coarse_anchor_search requires non-empty spatial and biological cost matrices")
+
+    if (X.shape[0], Y.shape[0]) != M_bio.shape:
+        X = X[:n_X]
+        Y = Y[:n_Y]
+        M_bio = M_bio[:n_X, :n_Y]
+        a = a[:n_X]
+        b = b[:n_Y]
+
+    k = min(800, n_X, n_Y)
+    idx_X = np.random.choice(n_X, k, replace=False) if n_X > k else np.arange(n_X)
+    idx_Y = np.random.choice(n_Y, k, replace=False) if n_Y > k else np.arange(n_Y)
     
     X_sub = X[idx_X]
     Y_sub = Y[idx_Y]
