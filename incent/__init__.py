@@ -15,27 +15,6 @@ from .utils import (
     to_dense_array,
     extract_data_matrix,
 )
-from .align import (
-    compute_lntd,
-    lntd_cost_matrix,
-    compute_coupling,
-)
-from .transform import (
-    recover_transform,
-    apply_transform,
-    weighted_procrustes,
-    enumerate_candidates,
-    RigidTransform,
-)
-from .temporal import (
-    rank_harmonize,
-    celltype_weights,
-    temporal_cost_blend,
-)
-from .pipeline import (
-    align_slices,
-    AlignmentResult,
-)
 
 __all__ = [
     # Original INCENT
@@ -49,21 +28,4 @@ __all__ = [
     'pairwise_msd',
     'to_dense_array',
     'extract_data_matrix',
-    # INCENT-Align: topology-aware coupling
-    'compute_lntd',
-    'lntd_cost_matrix',
-    'compute_coupling',
-    # INCENT-Align: transform recovery
-    'recover_transform',
-    'apply_transform',
-    'weighted_procrustes',
-    'enumerate_candidates',
-    'RigidTransform',
-    # INCENT-Align: cross-timepoint
-    'rank_harmonize',
-    'celltype_weights',
-    'temporal_cost_blend',
-    # INCENT-Align: pipeline
-    'align_slices',
-    'AlignmentResult',
 ]

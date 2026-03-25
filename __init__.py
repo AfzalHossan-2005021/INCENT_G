@@ -13,23 +13,6 @@ from .incent import (
     pairwise_msd,
     to_dense_array,
     extract_data_matrix,
-
-    compute_lntd,
-    lntd_cost_matrix,
-    compute_coupling,
-
-    recover_transform,
-    apply_transform,
-    weighted_procrustes,
-    enumerate_candidates,
-    RigidTransform,
-
-    rank_harmonize,
-    celltype_weights,
-    temporal_cost_blend,
-
-    align_slices,
-    AlignmentResult,
 )
 
 __all__ = [
@@ -44,21 +27,4 @@ __all__ = [
     'pairwise_msd',
     'to_dense_array',
     'extract_data_matrix',
-    # INCENT-Align: topology-aware coupling
-    'compute_lntd',
-    'lntd_cost_matrix',
-    'compute_coupling',
-    # INCENT-Align: transform recovery
-    'recover_transform',
-    'apply_transform',
-    'weighted_procrustes',
-    'enumerate_candidates',
-    'RigidTransform',
-    # INCENT-Align: cross-timepoint
-    'rank_harmonize',
-    'celltype_weights',
-    'temporal_cost_blend',
-    # INCENT-Align: pipeline
-    'align_slices',
-    'AlignmentResult',
 ]
