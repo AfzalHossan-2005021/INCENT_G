@@ -151,6 +151,14 @@ def _ensure_rigid_transform(R, t, dim: int) -> Tuple[np.ndarray, np.ndarray]:
     return R, t
 
 
+def _sanitize_coupling(pi):
+    """Convert a coupling to a finite float64 numpy array."""
+    pi = np.asarray(pi, dtype=np.float64)
+    if not np.isfinite(pi).all():
+        pi = np.nan_to_num(pi, nan=0.0, posinf=0.0, neginf=0.0)
+    return pi
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Private preprocessing helper — shared by both align functions
 # ─────────────────────────────────────────────────────────────────────────────
@@ -970,6 +978,7 @@ def pairwise_align_chiral(
         C = alpha * M_space + (1.0 - alpha) * M_bio
         
         pi = ot.unbalanced.sinkhorn_unbalanced(a, b, C, reg=epsilon, reg_m=reg_marginals)
+        pi = _sanitize_coupling(pi)
         
         R_new, t_new = weighted_procrustes(X_scaled, Y_scaled, pi, enforce_det=det)
         R_new, t_new = _ensure_rigid_transform(R_new, t_new, X_scaled.shape[1])

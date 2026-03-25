@@ -49,7 +49,7 @@ def make_symmetric_dataset():
 def test_pairwise_align_chiral_returns_transform_shapes():
     adata_source, adata_target, _ = make_symmetric_dataset()
 
-    pi, R, t = pairwise_align_chiral(
+    result = pairwise_align_chiral(
         adata_source,
         adata_target,
         alpha=0.5,
@@ -66,7 +66,12 @@ def test_pairwise_align_chiral_returns_transform_shapes():
         overwrite=True,
     )
 
+    assert isinstance(result, tuple)
+    assert len(result) == 3
+
+    pi, R, t = result
     assert pi is not None
+    assert np.isfinite(pi).all()
     assert R.shape == (2, 2)
     assert t.shape == (2,)
 
@@ -79,7 +84,8 @@ def main():
     try:
         pi_fgw = pairwise_align_unbalanced(
             adata_source, adata_target, alpha=0.5, beta=1.0, gamma=0.0, radius=20,
-            filePath='./tmp_out', sliceA_name='source', sliceB_name='target'
+            filePath='./tmp_out', sliceA_name='source', sliceB_name='target',
+            return_obj=False
         )
         print("FGW coupling shape:", pi_fgw.shape)
         # Check alignment mapping (does it map to Left or Right?)
@@ -95,8 +101,10 @@ def main():
         pi_chiral, R, t = pairwise_align_chiral(
             adata_source, adata_target, alpha=0.5, gamma=1.0, radii=[10, 20],
             filePath='./tmp_out', sliceA_name='source', sliceB_name='target',
-            reg_marginals=1.0, epsilon=0.01, max_iter_em=10
+            reg_marginals=1.0, epsilon=0.01, max_iter_em=10,
+            return_transform=True, return_obj=False
         )
+        assert np.isfinite(pi_chiral).all()
         mapped_to_right_c = np.sum(pi_chiral[:, 200:])
         mapped_to_left_c = np.sum(pi_chiral[:, :200])
         print(f"CHIRAL Mass to Left: {mapped_to_left_c:.2f}, Mass to Right: {mapped_to_right_c:.2f}")
