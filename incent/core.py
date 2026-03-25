@@ -767,9 +767,19 @@ def weighted_procrustes(X: np.ndarray, Y: np.ndarray, pi: np.ndarray, enforce_de
     Solves for rigid transformation (X @ R + t = Y) given optimal transport plan pi.
     If enforce_det is provided (+1 for SO(d), -1 for reflection), it strictly constrains R.
     """
+    dim = X.shape[1]
+    if pi is None:
+        return np.eye(dim), np.zeros((dim,))
+
+    pi = np.asarray(pi, dtype=np.float64)
+    if pi.ndim != 2 or pi.shape[0] != X.shape[0] or pi.shape[1] != Y.shape[0]:
+        return np.eye(dim), np.zeros((dim,))
+    if not np.isfinite(pi).all():
+        pi = np.nan_to_num(pi, nan=0.0, posinf=0.0, neginf=0.0)
+
     W = np.sum(pi)
     if W < 1e-12:
-        return np.eye(X.shape[1]), np.zeros((X.shape[1],))
+        return np.eye(dim), np.zeros((dim,))
         
     w_x = np.sum(pi, axis=1)
     w_y = np.sum(pi, axis=0)
@@ -781,12 +791,19 @@ def weighted_procrustes(X: np.ndarray, Y: np.ndarray, pi: np.ndarray, enforce_de
     Y_c = Y - mu_Y
     
     H = X_c.T @ pi @ Y_c
-    U, S, Vh = np.linalg.svd(H) # Vh is V^T
+
+    if not np.isfinite(H).all():
+        H = np.nan_to_num(H, nan=0.0, posinf=0.0, neginf=0.0)
+
+    try:
+        U, S, Vh = np.linalg.svd(H) # Vh is V^T
+    except np.linalg.LinAlgError:
+        return np.eye(dim), np.zeros((dim,))
     
     d = np.sign(np.linalg.det(U @ Vh))
     
     if enforce_det is not None and d != np.sign(enforce_det):
-        D = np.eye(X.shape[1])
+        D = np.eye(dim)
         D[-1, -1] = -1
         R = U @ D @ Vh
     else:
