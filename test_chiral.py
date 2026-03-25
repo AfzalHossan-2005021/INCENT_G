@@ -45,6 +45,31 @@ def make_symmetric_dataset():
     
     return adata_source, adata_target, X_source
 
+
+def test_pairwise_align_chiral_returns_transform_shapes():
+    adata_source, adata_target, _ = make_symmetric_dataset()
+
+    pi, R, t = pairwise_align_chiral(
+        adata_source,
+        adata_target,
+        alpha=0.5,
+        gamma=1.0,
+        radii=[10, 20],
+        filePath='./tmp_out',
+        sliceA_name='source',
+        sliceB_name='target',
+        reg_marginals=1.0,
+        epsilon=0.01,
+        max_iter_em=3,
+        return_transform=True,
+        return_obj=False,
+        overwrite=True,
+    )
+
+    assert pi is not None
+    assert R.shape == (2, 2)
+    assert t.shape == (2,)
+
 def main():
     print("Generating synthetic symmetric dataset...")
     adata_source, adata_target, original_X = make_symmetric_dataset()

@@ -137,6 +137,20 @@ def _hard_assignment_from_coupling(pi: np.ndarray) -> np.ndarray:
     return hard_pi
 
 
+def _ensure_rigid_transform(R, t, dim: int) -> Tuple[np.ndarray, np.ndarray]:
+    """Coerce a rotation/translation pair into valid rigid-transform shapes."""
+    R = np.asarray(R, dtype=np.float64)
+    t = np.asarray(t, dtype=np.float64).reshape(-1)
+
+    if R.ndim != 2 or R.shape != (dim, dim):
+        R = np.eye(dim, dtype=np.float64)
+
+    if t.size != dim:
+        t = np.zeros(dim, dtype=np.float64)
+
+    return R, t
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Private preprocessing helper — shared by both align functions
 # ─────────────────────────────────────────────────────────────────────────────
@@ -797,9 +811,9 @@ def coarse_anchor_search(X, Y, M_bio, a, b, alpha, reg, reg_m, angles_deg):
     mu_Y_sub = np.mean(Y_sub, axis=0)
     
     best_cost = np.inf
-    best_R = None
-    best_t = None
-    best_det = None
+    best_R = np.eye(X.shape[1], dtype=np.float64)
+    best_t = np.zeros(X.shape[1], dtype=np.float64)
+    best_det = 1
     
     for angle in angles_deg:
         rad = np.deg2rad(angle)
@@ -817,9 +831,11 @@ def coarse_anchor_search(X, Y, M_bio, a, b, alpha, reg, reg_m, angles_deg):
             
             try:
                 cost = ot.unbalanced.sinkhorn_unbalanced2(a_sub, b_sub, C, reg=reg, reg_m=reg_m)
-                val = cost.item() if hasattr(cost, 'item') else cost[0]
+                val = float(cost.item() if hasattr(cost, 'item') else cost[0])
+                if not np.isfinite(val):
+                    continue
             except Exception:
-                val = np.inf
+                continue
                 
             if val < best_cost:
                 best_cost = val
@@ -927,6 +943,7 @@ def pairwise_align_chiral(
     
     logFile.write("Starting Chirality-Aware Anchor Search...\n")
     R, t, det = coarse_anchor_search(X_scaled, Y_scaled, M_bio, a, b, alpha, epsilon, reg_marginals, angles_deg)
+    R, t = _ensure_rigid_transform(R, t, X_scaled.shape[1])
     
     pi = None
     for iteration in range(max_iter_em):
@@ -938,6 +955,7 @@ def pairwise_align_chiral(
         pi = ot.unbalanced.sinkhorn_unbalanced(a, b, C, reg=epsilon, reg_m=reg_marginals)
         
         R_new, t_new = weighted_procrustes(X_scaled, Y_scaled, pi, enforce_det=det)
+        R_new, t_new = _ensure_rigid_transform(R_new, t_new, X_scaled.shape[1])
         
         delta_R = np.linalg.norm(R_new - R)
         R = R_new
