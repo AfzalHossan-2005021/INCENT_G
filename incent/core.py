@@ -783,22 +783,9 @@ def weighted_procrustes(X: np.ndarray, Y: np.ndarray, pi: np.ndarray, enforce_de
 
 def coarse_anchor_search(X, Y, M_bio, a, b, alpha, reg, reg_m, angles_deg):
     """Searches over global coarse alignments in both O(d) chiral states."""
-    n_X = min(X.shape[0], M_bio.shape[0], a.shape[0])
-    n_Y = min(Y.shape[0], M_bio.shape[1], b.shape[0])
-
-    if n_X == 0 or n_Y == 0:
-        raise ValueError("coarse_anchor_search requires non-empty spatial and biological cost matrices")
-
-    if (X.shape[0], Y.shape[0]) != M_bio.shape:
-        X = X[:n_X]
-        Y = Y[:n_Y]
-        M_bio = M_bio[:n_X, :n_Y]
-        a = a[:n_X]
-        b = b[:n_Y]
-
-    k = min(800, n_X, n_Y)
-    idx_X = np.random.choice(n_X, k, replace=False) if n_X > k else np.arange(n_X)
-    idx_Y = np.random.choice(n_Y, k, replace=False) if n_Y > k else np.arange(n_Y)
+    k = 800
+    idx_X = np.random.choice(X.shape[0], k, replace=False) if X.shape[0] > k else np.arange(X.shape[0])
+    idx_Y = np.random.choice(Y.shape[0], k, replace=False) if Y.shape[0] > k else np.arange(Y.shape[0])
     
     X_sub = X[idx_X]
     Y_sub = Y[idx_Y]
@@ -906,18 +893,26 @@ def pairwise_align_chiral(
     Y_scaled = Y / scale
     
     nd_cache_A = f"{filePath}/barcodes_{sliceA_name}.npy"
-    if os.path.exists(nd_cache_A) and not overwrite:
+    if sliceA_name is not None and os.path.exists(nd_cache_A) and not overwrite:
         F_A = np.load(nd_cache_A)
+        if F_A.shape[0] != sliceA.shape[0]:
+            F_A = compute_spatial_barcodes(sliceA, radii)
+            np.save(nd_cache_A, F_A)
     else:
         F_A = compute_spatial_barcodes(sliceA, radii)
-        np.save(nd_cache_A, F_A)
+        if sliceA_name is not None:
+            np.save(nd_cache_A, F_A)
         
     nd_cache_B = f"{filePath}/barcodes_{sliceB_name}.npy"
-    if os.path.exists(nd_cache_B) and not overwrite:
+    if sliceB_name is not None and os.path.exists(nd_cache_B) and not overwrite:
         F_B = np.load(nd_cache_B)
+        if F_B.shape[0] != sliceB.shape[0]:
+            F_B = compute_spatial_barcodes(sliceB, radii)
+            np.save(nd_cache_B, F_B)
     else:
         F_B = compute_spatial_barcodes(sliceB, radii)
-        np.save(nd_cache_B, F_B)
+        if sliceB_name is not None:
+            np.save(nd_cache_B, F_B)
         
     F_A_tensor = torch.from_numpy(F_A).float().cuda() if use_gpu and torch.cuda.is_available() else torch.from_numpy(F_A).float()
     F_B_tensor = torch.from_numpy(F_B).float().cuda() if use_gpu and torch.cuda.is_available() else torch.from_numpy(F_B).float()
