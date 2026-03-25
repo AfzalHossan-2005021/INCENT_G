@@ -840,6 +840,15 @@ def coarse_anchor_search(X, Y, M_bio, a, b, alpha, reg, reg_m, angles_deg):
     best_t = np.zeros(X.shape[1], dtype=np.float64)
     best_det = 1
     
+    num_anchors = 6
+    if Y_sub.shape[0] > num_anchors:
+        anchor_idx = np.random.choice(Y_sub.shape[0], num_anchors, replace=False)
+        target_anchors = Y_sub[anchor_idx]
+    else:
+        target_anchors = Y_sub
+
+    target_anchors = np.vstack([target_anchors, mu_Y_sub])
+    
     for angle in angles_deg:
         rad = np.deg2rad(angle)
         c, s = np.cos(rad), np.sin(rad)
@@ -847,27 +856,32 @@ def coarse_anchor_search(X, Y, M_bio, a, b, alpha, reg, reg_m, angles_deg):
         R_unf = np.array([[c, -s], [s, c]])
         R_flip = np.array([[-c, s], [s, c]])
         
-        for R, det in [(R_unf, 1), (R_flip, -1)]:
-            t = mu_Y_sub - mu_X_sub @ R
-            X_rot = X_sub @ R + t
+        for R_core, det in [(R_unf, 1), (R_flip, -1)]:
+            R = np.eye(X.shape[1])
+            R[:2, :2] = R_core
             
-            M_space = ot.dist(X_rot, Y_sub, metric='sqeuclidean')
-            C = alpha * M_space + (1.0 - alpha) * M_bio_sub
-            
-            try:
-                cost = ot.unbalanced.sinkhorn_unbalanced2(a_sub, b_sub, C, reg=reg, reg_m=reg_m)
-                val = float(cost.item() if hasattr(cost, 'item') else cost[0])
-                if not np.isfinite(val):
+            for Y_target_center in target_anchors:
+                t = Y_target_center - mu_X_sub @ R
+                X_rot = X_sub @ R + t
+                
+                M_space = ot.dist(X_rot, Y_sub, metric='sqeuclidean')
+                M_space /= np.max(M_space) + 1e-12
+                C = alpha * M_space + (1.0 - alpha) * M_bio_sub
+                
+                try:
+                    cost = ot.unbalanced.sinkhorn_unbalanced2(a_sub, b_sub, C, reg=reg, reg_m=reg_m, method='sinkhorn_log')
+                    val = float(cost.item() if hasattr(cost, 'item') else cost[0])
+                    if not np.isfinite(val):
+                        continue
+                except Exception:
                     continue
-            except Exception:
-                continue
-                
-            if val < best_cost:
-                best_cost = val
-                best_R = R
-                best_t = t
-                best_det = det
-                
+                    
+                if val < best_cost:
+                    best_cost = val
+                    best_R = R
+                    best_t = t
+                    best_det = det
+                    
     return best_R, best_t, best_det
 
 def pairwise_align_chiral(
@@ -974,15 +988,15 @@ def pairwise_align_chiral(
     for iteration in range(max_iter_em):
         X_mapped = X_scaled @ R + t
         M_space = ot.dist(X_mapped, Y_scaled, metric='sqeuclidean')
-        
+        M_space /= np.max(M_space) + 1e-12
         C = alpha * M_space + (1.0 - alpha) * M_bio
         
-        pi = ot.unbalanced.sinkhorn_unbalanced(a, b, C, reg=epsilon, reg_m=reg_marginals)
+        pi = ot.unbalanced.sinkhorn_unbalanced(a, b, C, reg=epsilon, reg_m=reg_marginals, method='sinkhorn_log')
         pi = _sanitize_coupling(pi)
 
+        # Fallback to sparse identity connection to retain mass instead of uniform 0 matrix
         if np.sum(pi) < 1e-12:
-            # Fallback to non-zero uniform coupling to keep downstream alignment paths alive.
-            pi = np.ones_like(pi, dtype=np.float64) / (pi.shape[0] * pi.shape[1])
+            pi = np.eye(pi.shape[0], pi.shape[1], dtype=np.float64) / max(pi.shape[0], pi.shape[1])
 
         R_new, t_new = weighted_procrustes(X_scaled, Y_scaled, pi, enforce_det=det)
         R_new, t_new = _ensure_rigid_transform(R_new, t_new, X_scaled.shape[1])
