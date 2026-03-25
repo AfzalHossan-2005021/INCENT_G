@@ -979,7 +979,11 @@ def pairwise_align_chiral(
         
         pi = ot.unbalanced.sinkhorn_unbalanced(a, b, C, reg=epsilon, reg_m=reg_marginals)
         pi = _sanitize_coupling(pi)
-        
+
+        if np.sum(pi) < 1e-12:
+            # Fallback to non-zero uniform coupling to keep downstream alignment paths alive.
+            pi = np.ones_like(pi, dtype=np.float64) / (pi.shape[0] * pi.shape[1])
+
         R_new, t_new = weighted_procrustes(X_scaled, Y_scaled, pi, enforce_det=det)
         R_new, t_new = _ensure_rigid_transform(R_new, t_new, X_scaled.shape[1])
         

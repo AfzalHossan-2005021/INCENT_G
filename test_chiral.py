@@ -72,6 +72,7 @@ def test_pairwise_align_chiral_returns_transform_shapes():
     pi, R, t = result
     assert pi is not None
     assert np.isfinite(pi).all()
+    assert np.sum(pi) > 0
     assert R.shape == (2, 2)
     assert t.shape == (2,)
 
