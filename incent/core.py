@@ -523,7 +523,7 @@ def pairwise_align_unbalanced(
     reg_marginals:     float = 0.1,
     epsilon:           float = 0.01,
     divergence:        str   = 'kl',
-    unbalanced_solver: str   = 'sinkhorn',
+    unbalanced_solver: str   = 'sinkhorn_log',
     max_iter:          int   = 1000,
     tol:               float = 1e-7,
     max_iter_ot:       int   = 500,
