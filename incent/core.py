@@ -869,7 +869,7 @@ def coarse_anchor_search(X, Y, M_bio, a, b, alpha, reg, reg_m, angles_deg):
                 C = alpha * M_space + (1.0 - alpha) * M_bio_sub
                 
                 try:
-                    cost = ot.unbalanced.sinkhorn_unbalanced2(a_sub, b_sub, C, reg=reg, reg_m=reg_m, method='sinkhorn_log')
+                    cost = ot.unbalanced.sinkhorn_unbalanced2(a_sub, b_sub, C, reg=reg, reg_m=reg_m, method='sinkhorn')
                     val = float(cost.item() if hasattr(cost, 'item') else cost[0])
                     if not np.isfinite(val):
                         continue
@@ -976,9 +976,17 @@ def pairwise_align_chiral(
         M2 = M2.cpu().numpy()
         
     M_bio = M2
+    M_bio /= np.max(M_bio) + 1e-12  # Normalize for numerical stability
     
     a = a_distribution if a_distribution is not None else np.ones(X.shape[0]) / X.shape[0]
     b = b_distribution if b_distribution is not None else np.ones(Y.shape[0]) / Y.shape[0]
+    
+    # Initial objective logging
+    G0_np = np.ones((sliceA.shape[0], sliceB.shape[0])) / (sliceA.shape[0] * sliceB.shape[0])
+    init_nb = float(np.sum(M2 * G0_np))
+    init_gene = 0.0  # no gene cost in chiral
+    logFile.write(f"Initial obj neighbour (jsd): {init_nb:.6f}\n")
+    logFile.write(f"Initial obj gene (cosine):    {init_gene:.6f}\n\n")
     
     logFile.write("Starting Chirality-Aware Anchor Search...\n")
     R, t, det = coarse_anchor_search(X_scaled, Y_scaled, M_bio, a, b, alpha, epsilon, reg_marginals, angles_deg)
@@ -1013,6 +1021,14 @@ def pairwise_align_chiral(
     if hard_assignment:
         pi = _hard_assignment_from_coupling(pi)
         
+    # Final objective logging
+    final_nb = 0.0
+    max_idx = np.argmax(pi, axis=1)
+    final_nb = float(sum(pi[i, max_idx[i]] * M2[i, max_idx[i]] for i in range(len(max_idx))))
+    final_gene = 0.0
+    logFile.write(f"Final obj neighbour (jsd): {final_nb:.6f}\n")
+    logFile.write(f"Final obj gene (cosine):   {final_gene:.6f}\n")
+    
     logFile.close()
     
     # Clean up memory
@@ -1021,9 +1037,9 @@ def pairwise_align_chiral(
         
     if return_transform:
         if return_obj:
-            return pi, R, t_unscaled, 0, 0, 0, 0
+            return pi, R, t_unscaled, init_nb, init_gene, final_nb, final_gene
         return pi, R, t_unscaled
         
     if return_obj:
-        return pi, 0, 0, 0, 0
+        return pi, init_nb, init_gene, final_nb, final_gene
     return pi
