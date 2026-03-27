@@ -867,9 +867,10 @@ def coarse_anchor_search(X, Y, M_bio, a, b, alpha, reg, reg_m, angles_deg):
                 M_space = ot.dist(X_rot, Y_sub, metric='sqeuclidean')
                 M_space /= np.max(M_space) + 1e-12
                 C = alpha * M_space + (1.0 - alpha) * M_bio_sub
+                C /= np.max(C) + 1e-12
                 
                 try:
-                    cost = ot.unbalanced.sinkhorn_unbalanced2(a_sub, b_sub, C, reg=reg, reg_m=reg_m, method='sinkhorn')
+                    cost = ot.unbalanced.sinkhorn_unbalanced2(a_sub, b_sub, C, reg=reg, reg_m=reg_m, method='sinkhorn_stabilized')
                     val = float(cost.item() if hasattr(cost, 'item') else cost[0])
                     if not np.isfinite(val):
                         continue
@@ -892,7 +893,7 @@ def pairwise_align_chiral(
     radii:     list  = [50.0, 100.0, 200.0],
     filePath:  str   = "./",
     reg_marginals: float = 1.0,
-    epsilon:   float = 0.01,
+    epsilon:   float = 0.1,
     max_iter_em: int = 20,
     tol_em:    float = 1e-4,
     use_rep:   Optional[str] = None,
@@ -998,8 +999,9 @@ def pairwise_align_chiral(
         M_space = ot.dist(X_mapped, Y_scaled, metric='sqeuclidean')
         M_space /= np.max(M_space) + 1e-12
         C = alpha * M_space + (1.0 - alpha) * M_bio
+        C /= np.max(C) + 1e-12  # Additional normalization for stability
         
-        pi = ot.unbalanced.sinkhorn_unbalanced(a, b, C, reg=epsilon, reg_m=reg_marginals, method='sinkhorn')
+        pi = ot.unbalanced.sinkhorn_unbalanced(a, b, C, reg=epsilon, reg_m=reg_marginals, method='sinkhorn_stabilized')
         pi = _sanitize_coupling(pi)
 
         # Fallback to sparse identity connection to retain mass instead of uniform 0 matrix
