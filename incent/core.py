@@ -991,7 +991,7 @@ def pairwise_align_chiral(
         M_space /= np.max(M_space) + 1e-12
         C = alpha * M_space + (1.0 - alpha) * M_bio
         
-        pi = ot.unbalanced.sinkhorn_unbalanced(a, b, C, reg=epsilon, reg_m=reg_marginals, method='sinkhorn_log')
+        pi = ot.unbalanced.sinkhorn_unbalanced(a, b, C, reg=epsilon, reg_m=reg_marginals, method='sinkhorn')
         pi = _sanitize_coupling(pi)
 
         # Fallback to sparse identity connection to retain mass instead of uniform 0 matrix
