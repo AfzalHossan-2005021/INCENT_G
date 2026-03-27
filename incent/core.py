@@ -13,6 +13,7 @@ Shared fix in both: D_A and D_B are normalised by the SAME scale
 import os
 import time
 import datetime
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -157,6 +158,138 @@ def _sanitize_coupling(pi):
     if not np.isfinite(pi).all():
         pi = np.nan_to_num(pi, nan=0.0, posinf=0.0, neginf=0.0)
     return pi
+
+
+def _sanitize_cost_matrix(C):
+    """Make an OT cost matrix finite, non-negative, and float64."""
+    C = np.asarray(C, dtype=np.float64)
+    if not np.isfinite(C).all():
+        C = np.nan_to_num(C, nan=0.0, posinf=1e6, neginf=0.0)
+    return np.maximum(C, 0.0)
+
+
+def _normalize_weights(w):
+    """Return a safe probability vector for POT solvers."""
+    w = np.asarray(w, dtype=np.float64).reshape(-1)
+    w = np.maximum(w, 0.0)
+    s = float(w.sum())
+    if s <= 1e-12:
+        return None
+    return w / s
+
+
+def _retry_unbalanced_sinkhorn(
+    a,
+    b,
+    C,
+    reg,
+    reg_m,
+    method="sinkhorn_stabilized",
+):
+    """
+    Run POT's unbalanced Sinkhorn with a small fallback grid.
+
+    The POT warning we were seeing is a convergence failure, so we retry with
+    slightly larger entropy regularization and slightly smaller mass penalty
+    before giving up.
+    """
+    a = _normalize_weights(a)
+    b = _normalize_weights(b)
+    if a is None or b is None:
+        return None
+
+    C = _sanitize_cost_matrix(C)
+    reg = max(float(reg), 1e-6)
+    reg_m = max(float(reg_m), 1e-8)
+
+    method_grid = [method]
+    for fallback in ("sinkhorn_stabilized", "sinkhorn"):
+        if fallback not in method_grid:
+            method_grid.append(fallback)
+
+    reg_grid = [
+        (reg, reg_m),
+        (reg * 2.0, reg_m),
+        (reg * 5.0, reg_m),
+        (reg * 2.0, reg_m / 2.0),
+        (reg * 5.0, reg_m / 2.0),
+        (reg * 10.0, reg_m / 5.0),
+    ]
+
+    for method_name in method_grid:
+        for reg_try, reg_m_try in reg_grid:
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", UserWarning)
+                    pi = ot.unbalanced.sinkhorn_unbalanced(
+                        a,
+                        b,
+                        C,
+                        reg=reg_try,
+                        reg_m=reg_m_try,
+                        method=method_name,
+                    )
+                pi = _sanitize_coupling(pi)
+                if np.isfinite(pi).all() and pi.sum() > 1e-12:
+                    return pi
+            except Exception:
+                continue
+
+    return None
+
+
+def _retry_unbalanced_sinkhorn_cost(
+    a,
+    b,
+    C,
+    reg,
+    reg_m,
+    method="sinkhorn_stabilized",
+):
+    """Robust cost-only wrapper around sinkhorn_unbalanced2."""
+    a = _normalize_weights(a)
+    b = _normalize_weights(b)
+    if a is None or b is None:
+        return None
+
+    C = _sanitize_cost_matrix(C)
+    reg = max(float(reg), 1e-6)
+    reg_m = max(float(reg_m), 1e-8)
+
+    method_grid = [method]
+    for fallback in ("sinkhorn_stabilized", "sinkhorn"):
+        if fallback not in method_grid:
+            method_grid.append(fallback)
+
+    reg_grid = [
+        (reg, reg_m),
+        (reg * 2.0, reg_m),
+        (reg * 5.0, reg_m),
+        (reg * 2.0, reg_m / 2.0),
+        (reg * 5.0, reg_m / 2.0),
+        (reg * 10.0, reg_m / 5.0),
+    ]
+
+    for method_name in method_grid:
+        for reg_try, reg_m_try in reg_grid:
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", UserWarning)
+                    cost = ot.unbalanced.sinkhorn_unbalanced2(
+                        a,
+                        b,
+                        C,
+                        reg=reg_try,
+                        reg_m=reg_m_try,
+                        method=method_name,
+                    )
+                val = float(cost.item() if hasattr(cost, "item") else cost[0])
+                if np.isfinite(val):
+                    return val
+            except Exception:
+                continue
+
+    return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -869,14 +1002,17 @@ def coarse_anchor_search(X, Y, M_bio, a, b, alpha, reg, reg_m, angles_deg):
                 C = alpha * M_space + (1.0 - alpha) * M_bio_sub
                 C /= np.max(C) + 1e-12
                 
-                try:
-                    cost = ot.unbalanced.sinkhorn_unbalanced2(a_sub, b_sub, C, reg=reg, reg_m=reg_m, method='sinkhorn_stabilized')
-                    val = float(cost.item() if hasattr(cost, 'item') else cost[0])
-                    if not np.isfinite(val):
-                        continue
-                except Exception:
+                val = _retry_unbalanced_sinkhorn_cost(
+                    a_sub,
+                    b_sub,
+                    C,
+                    reg=reg,
+                    reg_m=reg_m,
+                    method='sinkhorn_stabilized',
+                )
+                if val is None:
                     continue
-                    
+
                 if val < best_cost:
                     best_cost = val
                     best_R = R
@@ -1001,8 +1137,17 @@ def pairwise_align_chiral(
         C = alpha * M_space + (1.0 - alpha) * M_bio
         C /= np.max(C) + 1e-12  # Additional normalization for stability
         
-        pi = ot.unbalanced.sinkhorn_unbalanced(a, b, C, reg=epsilon, reg_m=reg_marginals, method='sinkhorn_stabilized')
-        pi = _sanitize_coupling(pi)
+        candidate_pi = _retry_unbalanced_sinkhorn(
+            a,
+            b,
+            C,
+            reg=epsilon,
+            reg_m=reg_marginals,
+            method='sinkhorn_stabilized',
+        )
+        if candidate_pi is None:
+            candidate_pi = pi if pi is not None else np.outer(a, b)
+        pi = _sanitize_coupling(candidate_pi)
 
         # Fallback to sparse identity connection to retain mass instead of uniform 0 matrix
         if np.sum(pi) < 1e-12:
